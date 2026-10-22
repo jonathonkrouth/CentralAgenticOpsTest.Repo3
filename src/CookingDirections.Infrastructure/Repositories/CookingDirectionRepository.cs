@@ -1,9 +1,9 @@
 using System.Data;
-using System.Data.Common;
 using System.Globalization;
 using CookingDirections.Application.Abstractions;
 using CookingDirections.Application.Domain;
 using CookingDirections.Infrastructure.Data;
+using Dapper;
 
 namespace CookingDirections.Infrastructure.Repositories;
 
@@ -37,29 +37,28 @@ public sealed class CookingDirectionRepository(IDbConnectionFactory connectionFa
     {
         await using var connection = connectionFactory.CreateConnection();
         await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = SelectSql + " ORDER BY FoodProductId, StepNumber;";
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var cookingDirections = new List<CookingDirection>();
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            cookingDirections.Add(Map(reader));
-        }
+        var rows = await connection.QueryAsync<CookingDirectionRow>(new CommandDefinition(
+            SelectSql + " ORDER BY FoodProductId, StepNumber;",
+            cancellationToken: cancellationToken));
 
-        return cookingDirections;
+        return rows.Select(row => row.ToDomain()).ToList();
     }
 
     public async Task<CookingDirection?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
         await using var connection = connectionFactory.CreateConnection();
         await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = SelectSql + " WHERE Id = @Id;";
-        AddParameter(command, "@Id", DbType.Int32, id);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? Map(reader) : null;
+        var parameters = new DynamicParameters();
+        AddParameter(parameters, "@Id", DbType.Int32, id);
+
+        var row = await connection.QueryFirstOrDefaultAsync<CookingDirectionRow>(new CommandDefinition(
+            SelectSql + " WHERE Id = @Id;",
+            parameters,
+            cancellationToken: cancellationToken));
+
+        return row?.ToDomain();
     }
 
     public async Task<int> CreateAsync(CookingDirection cookingDirection, CancellationToken cancellationToken = default)
@@ -68,12 +67,15 @@ public sealed class CookingDirectionRepository(IDbConnectionFactory connectionFa
 
         await using var connection = connectionFactory.CreateConnection();
         await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = InsertSql;
-        AddWritableParameters(command, cookingDirection);
-        AddParameter(command, "@CreatedAt", DbType.DateTimeOffset, cookingDirection.CreatedAt);
 
-        var newId = await command.ExecuteScalarAsync(cancellationToken);
+        var parameters = new DynamicParameters();
+        AddWritableParameters(parameters, cookingDirection);
+        AddParameter(parameters, "@CreatedAt", DbType.DateTimeOffset, cookingDirection.CreatedAt);
+
+        var newId = await connection.ExecuteScalarAsync<object>(new CommandDefinition(
+            InsertSql,
+            parameters,
+            cancellationToken: cancellationToken));
         return Convert.ToInt32(newId, CultureInfo.InvariantCulture);
     }
 
@@ -83,59 +85,72 @@ public sealed class CookingDirectionRepository(IDbConnectionFactory connectionFa
 
         await using var connection = connectionFactory.CreateConnection();
         await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = UpdateSql;
-        AddParameter(command, "@Id", DbType.Int32, cookingDirection.Id);
-        AddWritableParameters(command, cookingDirection);
 
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var parameters = new DynamicParameters();
+        AddParameter(parameters, "@Id", DbType.Int32, cookingDirection.Id);
+        AddWritableParameters(parameters, cookingDirection);
+
+        return await connection.ExecuteAsync(new CommandDefinition(
+            UpdateSql,
+            parameters,
+            cancellationToken: cancellationToken)) > 0;
     }
 
     public async Task<bool> DeleteAsync(int id, CancellationToken cancellationToken = default)
     {
         await using var connection = connectionFactory.CreateConnection();
         await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = DeleteSql;
-        AddParameter(command, "@Id", DbType.Int32, id);
 
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var parameters = new DynamicParameters();
+        AddParameter(parameters, "@Id", DbType.Int32, id);
+
+        return await connection.ExecuteAsync(new CommandDefinition(
+            DeleteSql,
+            parameters,
+            cancellationToken: cancellationToken)) > 0;
     }
 
-    private static void AddWritableParameters(DbCommand command, CookingDirection cookingDirection)
+    private static void AddWritableParameters(DynamicParameters parameters, CookingDirection cookingDirection)
     {
-        AddParameter(command, "@FoodProductId", DbType.Int32, cookingDirection.FoodProductId);
-        AddParameter(command, "@StepNumber", DbType.Int32, cookingDirection.StepNumber);
-        AddParameter(command, "@Instruction", DbType.String, cookingDirection.Instruction);
-        AddParameter(command, "@DurationMinutes", DbType.Int32, cookingDirection.DurationMinutes);
-        AddParameter(command, "@TemperatureFahrenheit", DbType.Int32, cookingDirection.TemperatureFahrenheit);
-        AddParameter(command, "@UpdatedAt", DbType.DateTimeOffset, cookingDirection.UpdatedAt);
+        AddParameter(parameters, "@FoodProductId", DbType.Int32, cookingDirection.FoodProductId);
+        AddParameter(parameters, "@StepNumber", DbType.Int32, cookingDirection.StepNumber);
+        AddParameter(parameters, "@Instruction", DbType.String, cookingDirection.Instruction);
+        AddParameter(parameters, "@DurationMinutes", DbType.Int32, cookingDirection.DurationMinutes);
+        AddParameter(parameters, "@TemperatureFahrenheit", DbType.Int32, cookingDirection.TemperatureFahrenheit);
+        AddParameter(parameters, "@UpdatedAt", DbType.DateTimeOffset, cookingDirection.UpdatedAt);
     }
 
-    private static void AddParameter(DbCommand command, string name, DbType dbType, object? value)
-    {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        parameter.DbType = dbType;
-        parameter.Value = value ?? DBNull.Value;
-        command.Parameters.Add(parameter);
-    }
+    private static void AddParameter(DynamicParameters parameters, string name, DbType dbType, object? value) =>
+        parameters.Add(name, value ?? DBNull.Value, dbType);
 
-    private static CookingDirection Map(DbDataReader reader)
+    private sealed class CookingDirectionRow
     {
-        var durationOrdinal = reader.GetOrdinal("DurationMinutes");
-        var temperatureOrdinal = reader.GetOrdinal("TemperatureFahrenheit");
+        public int Id { get; set; }
 
-        return new CookingDirection
+        public int FoodProductId { get; set; }
+
+        public int StepNumber { get; set; }
+
+        public string Instruction { get; set; } = string.Empty;
+
+        public int? DurationMinutes { get; set; }
+
+        public int? TemperatureFahrenheit { get; set; }
+
+        public DateTimeOffset CreatedAt { get; set; }
+
+        public DateTimeOffset UpdatedAt { get; set; }
+
+        public CookingDirection ToDomain() => new()
         {
-            Id = reader.GetInt32(reader.GetOrdinal("Id")),
-            FoodProductId = reader.GetInt32(reader.GetOrdinal("FoodProductId")),
-            StepNumber = reader.GetInt32(reader.GetOrdinal("StepNumber")),
-            Instruction = reader.GetString(reader.GetOrdinal("Instruction")),
-            DurationMinutes = reader.IsDBNull(durationOrdinal) ? null : reader.GetInt32(durationOrdinal),
-            TemperatureFahrenheit = reader.IsDBNull(temperatureOrdinal) ? null : reader.GetInt32(temperatureOrdinal),
-            CreatedAt = reader.GetFieldValue<DateTimeOffset>(reader.GetOrdinal("CreatedAt")),
-            UpdatedAt = reader.GetFieldValue<DateTimeOffset>(reader.GetOrdinal("UpdatedAt")),
+            Id = Id,
+            FoodProductId = FoodProductId,
+            StepNumber = StepNumber,
+            Instruction = Instruction,
+            DurationMinutes = DurationMinutes,
+            TemperatureFahrenheit = TemperatureFahrenheit,
+            CreatedAt = CreatedAt,
+            UpdatedAt = UpdatedAt,
         };
     }
 }
