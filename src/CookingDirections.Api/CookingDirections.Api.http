@@ -1,0 +1,41 @@
+@CookingDirections.Api_HostAddress = http://localhost:5228
+
+GET {{CookingDirections.Api_HostAddress}}/api/cooking-directions
+Accept: application/json
+
+###
+
+GET {{CookingDirections.Api_HostAddress}}/api/cooking-directions/1
+Accept: application/json
+
+###
+
+POST {{CookingDirections.Api_HostAddress}}/api/cooking-directions
+Content-Type: application/json
+
+{
+  "foodProductId": 1,
+  "stepNumber": 1,
+  "instruction": "Place the frozen pizza directly on the center oven rack.",
+  "durationMinutes": 14,
+  "temperatureFahrenheit": 425
+}
+
+###
+
+PUT {{CookingDirections.Api_HostAddress}}/api/cooking-directions/1
+Content-Type: application/json
+
+{
+  "foodProductId": 1,
+  "stepNumber": 1,
+  "instruction": "Place the frozen pizza directly on the center oven rack until the cheese is bubbly.",
+  "durationMinutes": 16,
+  "temperatureFahrenheit": 425
+}
+
+###
+
+DELETE {{CookingDirections.Api_HostAddress}}/api/cooking-directions/1
+
+###

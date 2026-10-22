@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CookingDirections.Api/CookingDirections.Api.csproj" />
+    <Project Path="src/CookingDirections.Application/CookingDirections.Application.csproj" />
+    <Project Path="src/CookingDirections.Infrastructure/CookingDirections.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CookingDirections.Api.Tests/CookingDirections.Api.Tests.csproj" />
+    <Project Path="tests/CookingDirections.Application.Tests/CookingDirections.Application.Tests.csproj" />
+    <Project Path="tests/CookingDirections.Infrastructure.Tests/CookingDirections.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>
