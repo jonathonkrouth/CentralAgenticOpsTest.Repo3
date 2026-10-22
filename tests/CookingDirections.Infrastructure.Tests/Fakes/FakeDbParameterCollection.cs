@@ -38,7 +38,7 @@ internal sealed class FakeDbParameterCollection : DbParameterCollection
     public override int IndexOf(object value) => value is DbParameter parameter ? _parameters.IndexOf(parameter) : -1;
 
     public override int IndexOf(string parameterName) =>
-        _parameters.FindIndex(parameter => parameter.ParameterName == parameterName);
+        _parameters.FindIndex(parameter => NormalizeName(parameter.ParameterName) == NormalizeName(parameterName));
 
     public override void Insert(int index, object value) => _parameters.Insert(index, (DbParameter)value);
 
@@ -48,10 +48,12 @@ internal sealed class FakeDbParameterCollection : DbParameterCollection
 
     public override void RemoveAt(string parameterName) => _parameters.RemoveAt(IndexOf(parameterName));
 
+    private static string NormalizeName(string name) => name.TrimStart('@');
+
     protected override DbParameter GetParameter(int index) => _parameters[index];
 
     protected override DbParameter GetParameter(string parameterName) =>
-        _parameters.Find(parameter => parameter.ParameterName == parameterName)
+        _parameters.Find(parameter => NormalizeName(parameter.ParameterName) == NormalizeName(parameterName))
         ?? throw new KeyNotFoundException($"Parameter '{parameterName}' was not added to the command.");
 
     protected override void SetParameter(int index, DbParameter value) => _parameters[index] = value;
